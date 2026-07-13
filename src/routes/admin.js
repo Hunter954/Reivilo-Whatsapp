@@ -1,6 +1,6 @@
 const express = require('express');
 const { getBotState, startBotInBackground, stopBot, cleanSessionArtifacts, sendText } = require('../bot');
-const { query, logMessage, updateUser, formatPhoneForAdmin } = require('../db');
+const { getPool, query, logMessage, updateUser, formatPhoneForAdmin } = require('../db');
 const config = require('../config');
 const router = express.Router();
 
@@ -182,6 +182,37 @@ router.post('/support/:id/reopen', requireAuth, async (req, res, next) => {
     await query(`UPDATE users SET support_status='open',support_opened_at=NOW(),support_closed_at=NULL,onboarding_step='support',lead_status='support',support_last_message_at=NOW(),updated_at=NOW() WHERE id=$1`, [user.id]);
     res.json({ ok: true });
   } catch (error) { next(error); }
+});
+
+router.post('/support/:id/delete', requireAuth, async (req, res, next) => {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const user = (await client.query('SELECT * FROM users WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!user) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Contato não encontrado.' });
+    }
+    await client.query('DELETE FROM message_logs WHERE user_id=$1', [user.id]);
+    await client.query(`UPDATE users SET
+      support_status='closed',
+      support_requested_at=NULL,
+      support_opened_at=NULL,
+      support_closed_at=NULL,
+      support_last_message_at=NULL,
+      support_unread_count=0,
+      onboarding_step=CASE WHEN onboarding_step='support' THEN 'main_menu' ELSE onboarding_step END,
+      lead_status=CASE WHEN payment_status='approved' THEN 'customer' ELSE 'engaged' END,
+      updated_at=NOW()
+      WHERE id=$1`, [user.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
 });
 router.get('/broadcast', requireAuth, (req,res)=>res.render('admin/broadcast',{result:null}));
 router.post('/broadcast', requireAuth, async(req,res,next)=>{try{const message=String(req.body.message||'').trim(),target=req.body.target||'all';if(message.length<3)return res.render('admin/broadcast',{result:'Digite uma mensagem válida.'});const where=target==='customers'?"payment_status='approved'":'TRUE';const users=(await query(`SELECT * FROM users WHERE ${where} AND whatsapp_jid IS NOT NULL ORDER BY last_interaction_at DESC LIMIT 500`)).rows;let sent=0;for(const user of users){try{await sendText(user.whatsapp_jid,message);sent++;await new Promise(r=>setTimeout(r,900))}catch(e){console.error(e.message)}}res.render('admin/broadcast',{result:`Mensagem enviada para ${sent} contato(s).`})}catch(e){next(e)}});

@@ -1,6 +1,42 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REIVILO Admin</title><link rel="stylesheet" href="/public/admin.css"></head><body>
-<aside class="sidebar"><div class="brand"><strong>REIVILO</strong><span>Mentoria · Mari Olivier</span></div><nav>
-<a href="/admin" class="<%= currentPath === '/admin' ? 'active' : '' %>">Dashboard</a>
-<a href="/admin/qr" class="<%= currentPath === '/admin/qr' ? 'active' : '' %>">Conectar WhatsApp</a>
-<a href="/admin/users">Contatos</a><a href="/admin/settings" class="<%= currentPath === '/admin/settings' ? 'active' : '' %>">Configurações</a><a href="/admin/payments">Pagamentos</a><a href="/admin/support">Atendimento</a><a href="/admin/broadcast">Disparo</a>
-</nav><form method="post" action="/admin/logout"><button class="logout">Sair</button></form></aside><main class="main">
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>REIVILO Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/public/admin.css">
+</head>
+<body class="<%= currentPath !== '/admin' ? 'sidebar-collapsed' : '' %>">
+<aside class="sidebar" id="adminSidebar">
+  <div class="sidebar-top">
+    <div class="brand">
+      <strong class="brand-full">REIVILO</strong>
+      <strong class="brand-short">R</strong>
+      <span>Mentoria · Mari Olivier</span>
+    </div>
+    <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Recolher ou expandir menu" aria-label="Recolher ou expandir menu">
+      <i class="bi bi-layout-sidebar-inset"></i>
+    </button>
+  </div>
+  <nav>
+    <a href="/admin" class="<%= currentPath === '/admin' ? 'active' : '' %>" title="Dashboard"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span></a>
+    <a href="/admin/qr" class="<%= currentPath === '/admin/qr' ? 'active' : '' %>" title="Conectar WhatsApp"><i class="bi bi-qr-code"></i><span>Conectar WhatsApp</span></a>
+    <a href="/admin/users" class="<%= currentPath === '/admin/users' ? 'active' : '' %>" title="Contatos"><i class="bi bi-people-fill"></i><span>Contatos</span></a>
+    <a href="/admin/settings" class="<%= currentPath === '/admin/settings' ? 'active' : '' %>" title="Configurações"><i class="bi bi-gear-fill"></i><span>Configurações</span></a>
+    <a href="/admin/payments" class="<%= currentPath === '/admin/payments' ? 'active' : '' %>" title="Pagamentos"><i class="bi bi-credit-card-fill"></i><span>Pagamentos</span></a>
+    <a href="/admin/support" class="<%= currentPath === '/admin/support' ? 'active' : '' %>" title="Atendimento"><i class="bi bi-chat-dots-fill"></i><span>Atendimento</span></a>
+    <a href="/admin/broadcast" class="<%= currentPath === '/admin/broadcast' ? 'active' : '' %>" title="Disparo"><i class="bi bi-megaphone-fill"></i><span>Disparo</span></a>
+  </nav>
+  <form method="post" action="/admin/logout">
+    <button class="logout" title="Sair"><i class="bi bi-box-arrow-left"></i><span>Sair</span></button>
+  </form>
+</aside>
+<main class="main">
+<script>
+(() => {
+  const toggle = document.getElementById('sidebarToggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', () => document.body.classList.toggle('sidebar-collapsed'));
+})();
+</script>
