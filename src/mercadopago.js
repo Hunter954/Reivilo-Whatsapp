@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { query, updateUser } = require('./db');
+const config = require('./config');
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -31,9 +32,10 @@ async function mpRequest(path, options = {}) {
 }
 
 async function createCheckoutForUser(user) {
-  const baseUrl = required('PUBLIC_BASE_URL').replace(/\/$/, '');
-  const price = moneyToNumber(process.env.REIVILO_PRICE_BRL || '997,00');
-  const title = process.env.REIVILO_PRODUCT_NAME || 'Mentoria REIVILO';
+  const baseUrl = config.publicBaseUrl();
+  if (!baseUrl) throw new Error('Domínio público do Railway ainda não foi detectado. Gere um domínio no serviço.');
+  const price = moneyToNumber(await config.get('price_brl', '997,00'));
+  const title = await config.get('product_name', 'Mentoria REIVILO');
   const body = {
     items: [{ id: 'reivilo-mentoria', title, quantity: 1, currency_id: 'BRL', unit_price: price }],
     external_reference: String(user.id),
@@ -105,7 +107,7 @@ async function processApprovedPayment(payment) {
 
   let groupAdded = false;
   let groupError = null;
-  const groupId = String(process.env.REIVILO_GROUP_JID || '').trim();
+  const groupId = String(await config.get('group_jid', '') || '').trim();
   if (groupId && !user.group_added_at) {
     try {
       await addParticipantToGroup(groupId, user.whatsapp_jid, user.phone);
@@ -114,7 +116,7 @@ async function processApprovedPayment(payment) {
       groupAdded = true;
     } catch (error) {
       groupError = error.message;
-      const invite = String(process.env.REIVILO_GROUP_INVITE_LINK || '').trim();
+      const invite = String(await config.get('group_invite_link', '') || '').trim();
       if (invite) await sendText(user.whatsapp_jid, `Seu acesso está liberado. Entre no grupo exclusivo por este link:\n${invite}`);
     }
   }

@@ -1,38 +1,17 @@
-# Implantação no Railway
+# Deploy simplificado no Railway
 
-## Serviços
+1. Conecte este repositório ao mesmo projeto onde já existe o PostgreSQL.
+2. No serviço da aplicação, cadastre somente:
 
-- 1 serviço do GitHub com este projeto.
-- 1 serviço PostgreSQL no mesmo projeto Railway.
+```env
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+MERCADO_PAGO_ACCESS_TOKEN=APP_USR-SEU_TOKEN
+```
 
-## Variáveis obrigatórias
+3. Gere um domínio público no Railway.
+4. Abra `https://seu-dominio/admin` e faça a configuração inicial.
+5. Informe usuário, senha, preço, grupo e mensagens pelo painel.
+6. Em **Conectar WhatsApp**, leia o QR Code uma única vez. A sessão fica salva no PostgreSQL.
+7. No Mercado Pago, configure o webhook em `https://seu-dominio/webhooks/mercadopago`.
 
-Copie as variáveis de `.env.example`. Não crie `PORT` manualmente; o Railway injeta essa variável.
-
-As mais importantes são:
-
-- `DATABASE_URL=${{Postgres.DATABASE_URL}}`
-- `PUBLIC_BASE_URL=https://dominio-publico-do-servico`
-- `ADMIN_USER` e `ADMIN_PASSWORD`
-- `SESSION_SECRET`
-- `WA_AUTH_STORE=postgres`
-- `MERCADO_PAGO_ACCESS_TOKEN`
-- `MERCADO_PAGO_WEBHOOK_SECRET`
-- `REIVILO_PRICE_BRL`
-- `REIVILO_GROUP_JID` e/ou `REIVILO_GROUP_INVITE_LINK`
-
-## Primeiro acesso
-
-1. Aguarde o deploy terminar.
-2. Acesse `/admin/login`.
-3. Entre com `ADMIN_USER` e `ADMIN_PASSWORD`.
-4. Abra **Conectar WhatsApp** e leia o QR Code.
-5. Após aparecer “Conectado via Baileys”, faça um redeploy de teste. Com `WA_AUTH_STORE=postgres`, não deverá pedir novo QR.
-
-## Webhook Mercado Pago
-
-Cadastre no Mercado Pago:
-
-`https://SEU-DOMINIO/webhooks/mercadopago`
-
-Selecione notificações de pagamentos. O webhook responde imediatamente e consulta o pagamento pela API antes de liberar o cliente.
+Se o serviço PostgreSQL tiver outro nome, substitua `Postgres` pelo nome exato na referência da variável.

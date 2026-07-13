@@ -5,6 +5,7 @@ const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const { startBotInBackground, getBotState } = require('./bot');
 
@@ -42,7 +43,7 @@ function portsToListen() {
 function buildSessionConfig() {
   const config = {
     name: 'reivilo_mentoria_sid',
-    secret: process.env.SESSION_SECRET || 'troque-esta-chave',
+    secret: process.env.SESSION_SECRET || crypto.createHash('sha256').update(process.env.DATABASE_URL || process.env.POSTGRES_URL || 'reivilo-local-session').digest('hex'),
     resave: false,
     saveUninitialized: false,
     proxy: true,
@@ -54,7 +55,7 @@ function buildSessionConfig() {
     }
   };
 
-  const wantsPgSession = toBool(process.env.USE_PG_SESSION, false) || String(process.env.SESSION_STORE || '').toLowerCase() === 'postgres';
+  const wantsPgSession = toBool(process.env.USE_PG_SESSION, true) || String(process.env.SESSION_STORE || 'postgres').toLowerCase() === 'postgres';
   if (wantsPgSession) {
     try {
       config.store = new PgSession({
