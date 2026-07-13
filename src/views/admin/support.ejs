@@ -1,1 +1,96 @@
-<%- include('../partials/admin-header') %><header class="page-header"><div><h1>Atendimento</h1><p>Contatos que escolheram falar com um atendente.</p></div></header><section class="panel"><table><thead><tr><th>Contato</th><th>Solicitado</th><th>Enviar resposta</th></tr></thead><tbody><% users.forEach(u=>{ %><tr><td><%= formatPhone(u) %></td><td><%= new Date(u.support_requested_at).toLocaleString('pt-BR') %></td><td><form class="stacked" method="post" action="/admin/users/<%= u.id %>/send"><input type="hidden" name="returnTo" value="/admin/support"><textarea name="message"></textarea><button>Responder</button></form></td></tr><% }) %></tbody></table></section><%- include('../partials/admin-footer') %>
+<%- include('../partials/admin-header') %>
+<header class="page-header support-page-header">
+  <div><h1>Central de atendimento</h1><p>Converse com os contatos sem sair do sistema. O bot permanece pausado durante o atendimento.</p></div>
+  <span class="status <%= botReady ? 'ok' : 'warn' %>" id="waStatus"><%= botReady ? 'WhatsApp conectado' : 'WhatsApp desconectado' %></span>
+</header>
+
+<section class="support-app" data-selected-id="<%= selected?.id || '' %>">
+  <aside class="support-contacts">
+    <div class="support-search"><input id="contactSearch" placeholder="Buscar contato..."></div>
+    <div id="conversationList" class="conversation-list">
+      <% if (!conversations.length) { %><div class="empty-state">Nenhum atendimento solicitado.</div><% } %>
+      <% conversations.forEach(u => { %>
+        <a class="conversation-item <%= selected?.id===u.id ? 'active' : '' %>" href="/admin/support?user=<%= u.id %>" data-user-id="<%= u.id %>" data-search="<%= (u.name || '') + ' ' + formatPhone(u) %>">
+          <div class="avatar"><%= (u.name || formatPhone(u) || '?').charAt(0).toUpperCase() %></div>
+          <div class="conversation-summary"><div class="conversation-top"><strong><%= u.name || formatPhone(u) %></strong><small><%= new Date(u.support_last_message_at || u.support_requested_at || u.last_interaction_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) %></small></div><div class="conversation-bottom"><span><%= u.last_direction==='out' ? 'Você: ' : '' %><%= (u.last_message || 'Atendimento solicitado').slice(0,58) %></span><% if(Number(u.support_unread_count||0)>0){ %><b class="unread"><%= u.support_unread_count %></b><% } %></div></div>
+        </a>
+      <% }) %>
+    </div>
+  </aside>
+
+  <section class="support-chat">
+    <% if (selected) { %>
+      <header class="chat-header"><div class="avatar"><%= (selected.name || formatPhone(selected) || '?').charAt(0).toUpperCase() %></div><div><strong><%= selected.name || formatPhone(selected) %></strong><small><%= formatPhone(selected) %> · <span id="supportState"><%= selected.support_status==='open' ? 'Atendimento aberto' : 'Atendimento encerrado' %></span></small></div><div class="chat-actions"><button type="button" id="reopenButton" class="secondary <%= selected.support_status==='open' ? 'hidden' : '' %>">Reabrir</button><button type="button" id="closeButton" class="danger <%= selected.support_status==='open' ? '' : 'hidden' %>">Encerrar atendimento</button></div></header>
+      <div id="messageArea" class="message-area">
+        <% messages.forEach(m => { %><div class="message-row <%= m.direction==='out' ? 'out' : 'in' %>" data-message-id="<%= m.id %>"><div class="message-bubble"><div><%= m.body || '[mensagem sem texto]' %></div><small><%= new Date(m.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) %></small></div></div><% }) %>
+      </div>
+      <form id="replyForm" class="chat-compose <%= selected.support_status==='open' ? '' : 'disabled' %>"><textarea id="replyMessage" rows="1" placeholder="<%= selected.support_status==='open' ? 'Digite uma mensagem...' : 'Atendimento encerrado. Reabra para responder.' %>" <%= selected.support_status==='open' ? '' : 'disabled' %>></textarea><button class="primary" id="sendButton" <%= selected.support_status==='open' ? '' : 'disabled' %>>Enviar</button></form>
+    <% } else { %><div class="no-chat"><strong>Selecione um atendimento</strong><span>As conversas solicitadas aparecerão na lateral.</span></div><% } %>
+  </section>
+</section>
+
+<% if (selected) { %>
+<script>
+(() => {
+  const userId = <%- JSON.stringify(selected.id) %>;
+  const area = document.getElementById('messageArea');
+  const form = document.getElementById('replyForm');
+  const textarea = document.getElementById('replyMessage');
+  const closeButton = document.getElementById('closeButton');
+  const reopenButton = document.getElementById('reopenButton');
+  let lastIds = new Set(Array.from(area.querySelectorAll('[data-message-id]')).map(el => String(el.dataset.messageId)));
+  let supportOpen = <%= selected.support_status === 'open' ? 'true' : 'false' %>;
+
+  const escapeHtml = value => String(value || '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const scrollBottom = () => { area.scrollTop = area.scrollHeight; };
+  const addMessage = m => {
+    if (lastIds.has(String(m.id))) return;
+    lastIds.add(String(m.id));
+    const date = new Date(m.created_at);
+    const html = `<div class="message-row ${m.direction === 'out' ? 'out' : 'in'}" data-message-id="${m.id}"><div class="message-bubble"><div>${escapeHtml(m.body || '[mensagem sem texto]').replace(/\n/g,'<br>')}</div><small>${date.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></div></div>`;
+    area.insertAdjacentHTML('beforeend', html);
+  };
+  const setOpen = open => {
+    supportOpen = open;
+    document.getElementById('supportState').textContent = open ? 'Atendimento aberto' : 'Atendimento encerrado';
+    closeButton.classList.toggle('hidden', !open); reopenButton.classList.toggle('hidden', open);
+    textarea.disabled = !open; document.getElementById('sendButton').disabled = !open;
+    textarea.placeholder = open ? 'Digite uma mensagem...' : 'Atendimento encerrado. Reabra para responder.';
+    form.classList.toggle('disabled', !open);
+  };
+  async function refreshMessages() {
+    try {
+      const response = await fetch(`/admin/support/api/${userId}/messages`, {headers:{'Accept':'application/json'}});
+      if (!response.ok) return;
+      const data = await response.json();
+      data.messages.forEach(addMessage); setOpen(data.user.support_status === 'open'); scrollBottom();
+    } catch (_) {}
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); const message = textarea.value.trim(); if (!message || !supportOpen) return;
+    const button = document.getElementById('sendButton'); button.disabled = true;
+    try {
+      const response = await fetch(`/admin/support/${userId}/reply`, {method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({message})});
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Erro ao enviar.');
+      textarea.value=''; await refreshMessages();
+    } catch (error) { alert(error.message); } finally { button.disabled = false; textarea.focus(); }
+  });
+  textarea.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
+  closeButton.addEventListener('click', async () => {
+    const message = prompt('Mensagem de encerramento:', 'Atendimento encerrado. Sempre que precisar, envie MENU para voltar às opções da REIVILO.');
+    if (message === null) return;
+    const response = await fetch(`/admin/support/${userId}/close`, {method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({message})});
+    if (!response.ok) return alert('Não foi possível encerrar.'); await refreshMessages();
+  });
+  reopenButton.addEventListener('click', async () => {
+    const response = await fetch(`/admin/support/${userId}/reopen`, {method:'POST',headers:{'Accept':'application/json'}});
+    if (!response.ok) return alert('Não foi possível reabrir.'); setOpen(true); textarea.focus();
+  });
+  document.getElementById('contactSearch').addEventListener('input', event => {
+    const q = event.target.value.toLowerCase(); document.querySelectorAll('.conversation-item').forEach(item => item.style.display = item.dataset.search.toLowerCase().includes(q) ? '' : 'none');
+  });
+  scrollBottom(); setInterval(refreshMessages, 3500);
+})();
+</script>
+<% } %>
+<%- include('../partials/admin-footer') %>

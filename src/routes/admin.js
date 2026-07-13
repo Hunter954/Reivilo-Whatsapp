@@ -94,7 +94,95 @@ router.get('/users', requireAuth, async (req, res, next) => { try { const q=Stri
 router.post('/users/:id/send', requireAuth, async (req,res,next)=>{try{const user=(await query('SELECT * FROM users WHERE id=$1',[req.params.id])).rows[0];const message=String(req.body.message||'').trim();if(user?.whatsapp_jid&&message){await sendText(user.whatsapp_jid,message);await logMessage({userId:user.id,whatsappJid:user.whatsapp_jid,direction:'out',body:message})}res.redirect(safeReturn(req.body.returnTo,'/admin/users'))}catch(e){next(e)}});
 router.post('/users/:id/mark-paid', requireAuth, async (req,res,next)=>{try{await updateUser(req.params.id,{payment_status:'approved',lead_status:'customer',paid_at:new Date()});res.redirect('/admin/users')}catch(e){next(e)}});
 router.get('/payments', requireAuth, async (req,res,next)=>{try{const payments=(await query(`SELECT p.*,u.phone,u.whatsapp_jid FROM payments p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 400`)).rows;res.render('admin/payments',{payments,formatPhone:formatPhoneForAdmin})}catch(e){next(e)}});
-router.get('/support', requireAuth, async (req,res,next)=>{try{const users=(await query(`SELECT * FROM users WHERE support_requested_at IS NOT NULL ORDER BY support_requested_at DESC LIMIT 200`)).rows;res.render('admin/support',{users,formatPhone:formatPhoneForAdmin})}catch(e){next(e)}});
+router.get('/support', requireAuth, async (req, res, next) => {
+  try {
+    const conversations = (await query(`
+      SELECT u.*,
+        (SELECT body FROM message_logs ml WHERE ml.user_id=u.id ORDER BY ml.created_at DESC LIMIT 1) AS last_message,
+        (SELECT direction FROM message_logs ml WHERE ml.user_id=u.id ORDER BY ml.created_at DESC LIMIT 1) AS last_direction
+      FROM users u
+      WHERE u.support_requested_at IS NOT NULL OR u.support_status='open'
+      ORDER BY (u.support_status='open') DESC,
+               COALESCE(u.support_last_message_at,u.support_requested_at,u.last_interaction_at) DESC
+      LIMIT 300
+    `)).rows;
+    const selectedId = Number(req.query.user || conversations[0]?.id || 0);
+    const selected = conversations.find((item) => item.id === selectedId) || conversations[0] || null;
+    let messages = [];
+    if (selected) {
+      messages = (await query(`SELECT id,direction,body,created_at FROM message_logs WHERE user_id=$1 ORDER BY created_at ASC LIMIT 1000`, [selected.id])).rows;
+      if (selected.support_status === 'open' && Number(selected.support_unread_count || 0) > 0) {
+        await query('UPDATE users SET support_unread_count=0 WHERE id=$1', [selected.id]);
+        selected.support_unread_count = 0;
+      }
+    }
+    res.render('admin/support', { conversations, selected, messages, formatPhone: formatPhoneForAdmin, botReady: getBotState().ready });
+  } catch (error) { next(error); }
+});
+
+router.get('/support/api/conversations', requireAuth, async (req, res, next) => {
+  try {
+    const rows = (await query(`
+      SELECT u.id,u.phone,u.whatsapp_jid,u.name,u.support_status,u.support_unread_count,
+             u.support_requested_at,u.support_last_message_at,
+             (SELECT body FROM message_logs ml WHERE ml.user_id=u.id ORDER BY ml.created_at DESC LIMIT 1) AS last_message,
+             (SELECT direction FROM message_logs ml WHERE ml.user_id=u.id ORDER BY ml.created_at DESC LIMIT 1) AS last_direction
+      FROM users u
+      WHERE u.support_requested_at IS NOT NULL OR u.support_status='open'
+      ORDER BY (u.support_status='open') DESC,
+               COALESCE(u.support_last_message_at,u.support_requested_at,u.last_interaction_at) DESC
+      LIMIT 300
+    `)).rows;
+    res.json(rows.map((row) => ({ ...row, display_phone: formatPhoneForAdmin(row) })));
+  } catch (error) { next(error); }
+});
+
+router.get('/support/api/:id/messages', requireAuth, async (req, res, next) => {
+  try {
+    const user = (await query('SELECT * FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'Contato não encontrado.' });
+    const messages = (await query('SELECT id,direction,body,created_at FROM message_logs WHERE user_id=$1 ORDER BY created_at ASC LIMIT 1000', [user.id])).rows;
+    if (user.support_status === 'open') await query('UPDATE users SET support_unread_count=0 WHERE id=$1', [user.id]);
+    res.json({ user: { ...user, display_phone: formatPhoneForAdmin(user), support_unread_count: 0 }, messages });
+  } catch (error) { next(error); }
+});
+
+router.post('/support/:id/reply', requireAuth, async (req, res, next) => {
+  try {
+    const user = (await query('SELECT * FROM users WHERE id=$1', [req.params.id])).rows[0];
+    const message = String(req.body.message || '').trim();
+    if (!user) return res.status(404).json({ error: 'Contato não encontrado.' });
+    if (user.support_status !== 'open') return res.status(409).json({ error: 'Este atendimento está encerrado. Reabra antes de responder.' });
+    if (!message) return res.status(400).json({ error: 'Digite uma mensagem.' });
+    await sendText(user.whatsapp_jid, message);
+    const logged = await logMessage({ userId: user.id, whatsappJid: user.whatsapp_jid, direction: 'out', body: message });
+    await query(`UPDATE users SET support_last_message_at=NOW(),support_unread_count=0,updated_at=NOW() WHERE id=$1`, [user.id]);
+    res.json({ ok: true, message: logged || { direction: 'out', body: message, created_at: new Date() } });
+  } catch (error) { next(error); }
+});
+
+router.post('/support/:id/close', requireAuth, async (req, res, next) => {
+  try {
+    const user = (await query('SELECT * FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'Contato não encontrado.' });
+    const closing = String(req.body.message || 'Atendimento encerrado. Sempre que precisar, envie *MENU* para voltar às opções da REIVILO.').trim();
+    if (closing) {
+      await sendText(user.whatsapp_jid, closing);
+      await logMessage({ userId: user.id, whatsappJid: user.whatsapp_jid, direction: 'out', body: closing });
+    }
+    await query(`UPDATE users SET support_status='closed',support_closed_at=NOW(),support_unread_count=0,onboarding_step='main_menu',lead_status=CASE WHEN payment_status='approved' THEN 'customer' ELSE 'engaged' END,updated_at=NOW() WHERE id=$1`, [user.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+router.post('/support/:id/reopen', requireAuth, async (req, res, next) => {
+  try {
+    const user = (await query('SELECT * FROM users WHERE id=$1', [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'Contato não encontrado.' });
+    await query(`UPDATE users SET support_status='open',support_opened_at=NOW(),support_closed_at=NULL,onboarding_step='support',lead_status='support',support_last_message_at=NOW(),updated_at=NOW() WHERE id=$1`, [user.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
 router.get('/broadcast', requireAuth, (req,res)=>res.render('admin/broadcast',{result:null}));
 router.post('/broadcast', requireAuth, async(req,res,next)=>{try{const message=String(req.body.message||'').trim(),target=req.body.target||'all';if(message.length<3)return res.render('admin/broadcast',{result:'Digite uma mensagem válida.'});const where=target==='customers'?"payment_status='approved'":'TRUE';const users=(await query(`SELECT * FROM users WHERE ${where} AND whatsapp_jid IS NOT NULL ORDER BY last_interaction_at DESC LIMIT 500`)).rows;let sent=0;for(const user of users){try{await sendText(user.whatsapp_jid,message);sent++;await new Promise(r=>setTimeout(r,900))}catch(e){console.error(e.message)}}res.render('admin/broadcast',{result:`Mensagem enviada para ${sent} contato(s).`})}catch(e){next(e)}});
 module.exports=router;
