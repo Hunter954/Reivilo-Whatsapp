@@ -1,0 +1,6 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REIVILO Admin</title><link rel="stylesheet" href="/public/admin.css"></head><body>
+<aside class="sidebar"><div class="brand"><strong>REIVILO</strong><span>Mentoria · Mari Olivier</span></div><nav>
+<a href="/admin" class="<%= currentPath === '/admin' ? 'active' : '' %>">Dashboard</a>
+<a href="/admin/qr" class="<%= currentPath === '/admin/qr' ? 'active' : '' %>">Conectar WhatsApp</a>
+<a href="/admin/users">Contatos</a><a href="/admin/payments">Pagamentos</a><a href="/admin/support">Atendimento</a><a href="/admin/broadcast">Disparo</a>
+</nav><form method="post" action="/admin/logout"><button class="logout">Sair</button></form></aside><main class="main">
