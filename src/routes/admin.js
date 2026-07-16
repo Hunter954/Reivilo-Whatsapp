@@ -1,5 +1,5 @@
 const express = require('express');
-const { getBotState, startBotInBackground, stopBot, cleanSessionArtifacts, sendText } = require('../bot');
+const { getBotState, startBotInBackground, stopBot, cleanSessionArtifacts, sendText, ensureAutomationSettingLoaded, setAutomationEnabled } = require('../bot');
 const { getPool, query, logMessage, updateUser, formatPhoneForAdmin } = require('../db');
 const config = require('../config');
 const router = express.Router();
@@ -79,6 +79,7 @@ router.post('/settings', requireAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    await ensureAutomationSettingLoaded();
     const stats = (await query(`SELECT COUNT(*)::int AS leads, COUNT(*) FILTER (WHERE payment_status='approved')::int AS customers, COUNT(*) FILTER (WHERE payment_status='checkout_created')::int AS checkouts, COUNT(*) FILTER (WHERE support_requested_at IS NOT NULL)::int AS support, COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '7 days')::int AS new_7d FROM users`)).rows[0];
     const recentUsers = (await query('SELECT * FROM users ORDER BY created_at DESC LIMIT 12')).rows;
     const recentPayments = (await query(`SELECT p.*, u.phone, u.whatsapp_jid FROM payments p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.updated_at DESC LIMIT 12`)).rows;
@@ -86,10 +87,22 @@ router.get('/', requireAuth, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.post('/bot/automation', requireAuth, async (req, res, next) => {
+  try {
+    await setAutomationEnabled(String(req.body.enabled || '') === 'true');
+    res.redirect(safeReturn(req.body.returnTo, '/admin'));
+  } catch (error) { next(error); }
+});
+
 router.post('/bot/start', requireAuth, (req, res) => { startBotInBackground(); res.redirect('/admin/qr'); });
 router.post('/bot/restart-clean', requireAuth, async (req, res) => { await stopBot(); await cleanSessionArtifacts(); startBotInBackground({ cleanSession: true }); res.redirect('/admin/qr'); });
 router.post('/bot/stop', requireAuth, async (req, res) => { await stopBot(); res.redirect('/admin/qr'); });
-router.get('/qr', requireAuth, (req, res) => res.render('admin/qr', { bot: getBotState() }));
+router.get('/qr', requireAuth, async (req, res, next) => {
+  try {
+    await ensureAutomationSettingLoaded();
+    res.render('admin/qr', { bot: getBotState() });
+  } catch (error) { next(error); }
+});
 router.get('/users', requireAuth, async (req, res, next) => { try { const q=String(req.query.q||'').trim(),status=String(req.query.status||'').trim(),params=[],where=[]; if(q){params.push(`%${q}%`);where.push(`(phone ILIKE $${params.length} OR whatsapp_jid ILIKE $${params.length})`)} if(status){params.push(status);where.push(`payment_status=$${params.length}`)} const users=(await query(`SELECT * FROM users ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY created_at DESC LIMIT 300`,params)).rows; res.render('admin/users',{users,q,status,formatPhone:formatPhoneForAdmin}); }catch(error){next(error)} });
 router.post('/users/:id/send', requireAuth, async (req,res,next)=>{try{const user=(await query('SELECT * FROM users WHERE id=$1',[req.params.id])).rows[0];const message=String(req.body.message||'').trim();if(user?.whatsapp_jid&&message){await sendText(user.whatsapp_jid,message);await logMessage({userId:user.id,whatsappJid:user.whatsapp_jid,direction:'out',body:message})}res.redirect(safeReturn(req.body.returnTo,'/admin/users'))}catch(e){next(e)}});
 router.post('/users/:id/mark-paid', requireAuth, async (req,res,next)=>{try{await updateUser(req.params.id,{payment_status:'approved',lead_status:'customer',paid_at:new Date()});res.redirect('/admin/users')}catch(e){next(e)}});

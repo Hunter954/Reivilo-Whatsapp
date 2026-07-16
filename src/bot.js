@@ -3,6 +3,7 @@ const path = require('path');
 const { Boom } = require('@hapi/boom');
 const { handleIncomingMessage } = require('./flows');
 const db = require('./db');
+const config = require('./config');
 
 let client = null;
 let starting = false;
@@ -12,6 +13,8 @@ let baileysSaveCreds = null;
 
 const state = {
   enabled: String(process.env.ENABLE_WHATSAPP || 'true') === 'true',
+  automationEnabled: true,
+  automationSettingLoaded: false,
   sessionId: process.env.WA_SESSION_ID || 'reivilo-mentoria',
   engine: 'baileys',
   authStore: 'local-file',
@@ -31,6 +34,23 @@ const state = {
   lastOutboundPreview: null,
   lastOutboundError: null
 };
+
+
+async function ensureAutomationSettingLoaded() {
+  if (state.automationSettingLoaded) return state.automationEnabled;
+  const saved = await config.get('bot_automation_enabled', 'true');
+  state.automationEnabled = ['true', '1', 'yes', 'sim', 'on'].includes(String(saved).toLowerCase());
+  state.automationSettingLoaded = true;
+  return state.automationEnabled;
+}
+
+async function setAutomationEnabled(enabled) {
+  state.automationEnabled = Boolean(enabled);
+  state.automationSettingLoaded = true;
+  await config.set('bot_automation_enabled', state.automationEnabled ? 'true' : 'false');
+  console.log(`[WhatsApp] Automação ${state.automationEnabled ? 'ativada' : 'pausada'} pelo painel.`);
+  return state.automationEnabled;
+}
 
 function boolEnv(name, fallback) {
   const value = process.env[name];
@@ -420,6 +440,12 @@ async function startBaileys() {
         state.lastInboundPreview = body ? String(body).slice(0, 80) : '[mensagem sem texto]';
         console.log(`[WhatsApp] Mensagem recebida (${type || 'sem tipo'}) de ${from}: ${state.lastInboundPreview}`);
 
+        const automationEnabled = await ensureAutomationSettingLoaded();
+        if (!automationEnabled) {
+          console.log(`[WhatsApp] Automação pausada; mensagem de ${from} ignorada sem desconectar a sessão.`);
+          continue;
+        }
+
         const normalizedMessage = {
           from,
           phone,
@@ -441,6 +467,7 @@ async function startBaileys() {
 }
 
 async function startBot(options = {}) {
+  await ensureAutomationSettingLoaded();
   if (!state.enabled) {
     state.status = 'Desativado por ENABLE_WHATSAPP=false';
     return null;
@@ -509,6 +536,7 @@ function getBotState() {
     authStore: state.authStore,
     starting,
     qrAvailable: Boolean(state.qr),
+    automationStatus: state.automationEnabled ? 'Automação ativa' : 'Automação pausada',
     uptimeSeconds: state.startedAt ? Math.round((Date.now() - new Date(state.startedAt).getTime()) / 1000) : 0
   };
 }
@@ -533,5 +561,7 @@ module.exports = {
   getBotClient,
   getBotState,
   sendText,
-  addParticipantToGroup
+  addParticipantToGroup,
+  ensureAutomationSettingLoaded,
+  setAutomationEnabled
 };

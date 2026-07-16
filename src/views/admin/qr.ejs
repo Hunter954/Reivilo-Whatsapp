@@ -5,6 +5,11 @@
     <p>Abra o WhatsApp comercial, vá em aparelhos conectados e leia o QR Code.</p>
   </div>
   <div class="actions">
+    <form method="post" action="/admin/bot/automation">
+      <input type="hidden" name="enabled" value="<%= bot.automationEnabled ? 'false' : 'true' %>">
+      <input type="hidden" name="returnTo" value="/admin/qr">
+      <button class="<%= bot.automationEnabled ? 'danger' : 'primary' %>"><i class="bi <%= bot.automationEnabled ? 'bi-pause-circle' : 'bi-play-circle' %>"></i> <%= bot.automationEnabled ? 'Pausar automação' : 'Ativar automação' %></button>
+    </form>
     <form method="post" action="/admin/bot/start">
       <button class="primary">Gerar/Iniciar</button>
     </form>
@@ -19,6 +24,8 @@
 
 <section class="panel centered">
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <div class="status <%= bot.automationEnabled ? 'ok' : 'paused' %>"><%= bot.automationStatus %></div>
+  <% if (!bot.automationEnabled) { %><p class="muted">A conexão permanece aberta. Apenas as respostas automáticas estão suspensas, portanto não será necessário ler o QR novamente ao reativar.</p><% } %>
   <p>Motor atual: <strong>Baileys puro</strong></p>
   <p>Sessão salva em: <strong><%= bot.authStore || 'arquivo local' %></strong></p>
   <p>Tentativas de inicialização: <strong><%= bot.launchAttempts || 0 %></strong></p>
@@ -37,7 +44,7 @@
     <p>Depois de ler o QR, mantenha o celular conectado por alguns minutos para salvar a sessão. Nesta versão, a sessão é salva no PostgreSQL por padrão para sobreviver aos redeploys.</p>
   <% } else if (bot.ready) { %>
     <h2>✅ WhatsApp conectado</h2>
-    <p>O bot já está pronto para receber mensagens.</p>
+    <p><%= bot.automationEnabled ? 'O bot está pronto para receber e responder mensagens.' : 'O WhatsApp está conectado, porém as respostas automáticas estão pausadas.' %></p>
   <% } else if (bot.starting) { %>
     <h2>Inicializando WhatsApp</h2>
     <p>Atualize esta página em alguns segundos. O QR aparece aqui assim que o WhatsApp liberar.</p>

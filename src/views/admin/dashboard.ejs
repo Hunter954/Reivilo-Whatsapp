@@ -1,7 +1,23 @@
 <%- include('../partials/admin-header') %>
 <header class="page-header"><div><h1>Dashboard REIVILO</h1><p>Funil da mentoria, pagamentos e WhatsApp.</p></div><a href="/admin/qr"><button class="primary">Conectar WhatsApp</button></a></header>
 <section class="grid stats"><article><strong><%= stats.leads %></strong><span>Contatos</span></article><article><strong><%= stats.checkouts %></strong><span>Links enviados</span></article><article><strong><%= stats.customers %></strong><span>Pagamentos aprovados</span></article><article><strong><%= stats.support %></strong><span>Atendimentos</span></article><article><strong><%= stats.new_7d %></strong><span>Novos em 7 dias</span></article></section>
-<section class="panel"><h2>Status do WhatsApp</h2><div class="status <%= bot.ready ? 'ok':'warn' %>"><%= bot.status %></div><p>Sessão: <strong><%= bot.authStore %></strong></p><% if(bot.qrAvailable){ %><a href="/admin/qr">Abrir QR Code</a><% } %></section>
+<section class="panel bot-control-panel">
+  <div class="bot-control-copy">
+    <h2>Controle da automação</h2>
+    <div class="status <%= bot.automationEnabled ? 'ok' : 'paused' %>"><%= bot.automationStatus %></div>
+    <p><%= bot.automationEnabled ? 'O sistema está respondendo automaticamente às mensagens recebidas.' : 'As mensagens não recebem respostas automáticas, mas o WhatsApp continua conectado e a sessão permanece salva.' %></p>
+    <p>Conexão: <strong><%= bot.status %></strong> · Sessão: <strong><%= bot.authStore %></strong></p>
+    <% if(bot.qrAvailable){ %><a href="/admin/qr">Abrir QR Code</a><% } %>
+  </div>
+  <form method="post" action="/admin/bot/automation">
+    <input type="hidden" name="enabled" value="<%= bot.automationEnabled ? 'false' : 'true' %>">
+    <input type="hidden" name="returnTo" value="/admin">
+    <button class="bot-toggle <%= bot.automationEnabled ? 'pause' : 'activate' %>">
+      <i class="bi <%= bot.automationEnabled ? 'bi-pause-circle-fill' : 'bi-play-circle-fill' %>"></i>
+      <%= bot.automationEnabled ? 'Pausar automação' : 'Ativar automação' %>
+    </button>
+  </form>
+</section>
 <div class="two-columns"><section class="panel"><h2>Contatos recentes</h2><table><thead><tr><th>Telefone</th><th>Etapa</th><th>Pagamento</th></tr></thead><tbody><% recentUsers.forEach(u=>{ %><tr><td><%= formatPhone(u) %></td><td><%= u.lead_status %></td><td><span class="pill"><%= u.payment_status %></span></td></tr><% }) %></tbody></table></section>
 <section class="panel"><h2>Pagamentos recentes</h2><table><thead><tr><th>Contato</th><th>Status</th><th>Valor</th></tr></thead><tbody><% recentPayments.forEach(p=>{ %><tr><td><%= formatPhone(p) %></td><td><%= p.status %></td><td>R$ <%= (p.amount_cents/100).toFixed(2).replace('.',',') %></td></tr><% }) %></tbody></table></section></div>
 <%- include('../partials/admin-footer') %>
