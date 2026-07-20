@@ -73,7 +73,8 @@ async function handleIncomingMessage(client, message) {
     return send(client, jid, await supportMessage(), user.id);
   }
 
-  return send(client, jid, `Não consegui identificar essa opção.\n\n${await welcomeMessage()}`, user.id);
+  // Qualquer saudação ou texto livre retorna diretamente ao menu, sem mensagem de erro.
+  return send(client, jid, await welcomeMessage(), user.id);
 }
 
 module.exports = { handleIncomingMessage };
